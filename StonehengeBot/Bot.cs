@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Reflection;
 using System.Threading.Tasks;
 using Discord;
+using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -11,36 +13,55 @@ namespace StonehengeBot
     {
         private readonly IConfigurationRoot _configuration;
         private readonly ILogger<Bot> _logger;
+        private readonly DiscordSocketClient _client;
+        private readonly CommandService _commandService;
 
-        public Bot(IConfigurationRoot configuration, ILogger<Bot> logger)
+        public Bot(IConfigurationRoot configuration, ILogger<Bot> logger, DiscordSocketClient client, CommandService commandService)
         {
             _configuration = configuration;
             _logger = logger;
+            _client = client;
+            _commandService = commandService;
         }
 
         public async Task Run()
         {
-            using (var client = new DiscordSocketClient())
-            {
-                client.Log += Log;
-                client.MessageReceived += MessageReceived;
+            _client.Log += LogAsync;
 
-                await client.LoginAsync(TokenType.Bot, _configuration["Token"]);
-                await client.StartAsync();
+            await InstallCommandsAsync(_client);
 
-                await Task.Delay(-1);
-            }
+            await _client.LoginAsync(TokenType.Bot, _configuration["Token"]);
+            await _client.StartAsync();
+
+            await Task.Delay(-1);
         }
 
-        private async Task MessageReceived(SocketMessage message)
+        private async Task InstallCommandsAsync(DiscordSocketClient client)
         {
-            if (message.Content == "!ping")
+            client.MessageReceived += MessageReceivedAsync;
+
+            await _commandService.AddModulesAsync(Assembly.GetEntryAssembly());
+        }
+
+        private async Task MessageReceivedAsync(SocketMessage message)
+        {
+            if (!(message is SocketUserMessage userMessage))
+                return;
+
+            var argPosition = 0;
+            if (!userMessage.HasCharPrefix('!', ref argPosition) && !userMessage.HasMentionPrefix(_client.CurrentUser, ref argPosition))
+                return;
+
+            var context = new SocketCommandContext(_client, userMessage);
+            var result = await _commandService.ExecuteAsync(context, argPosition);
+            if (!result.IsSuccess)
             {
-                await message.Channel.SendMessageAsync("Pong!");
+                _logger.LogError(result.ErrorReason);
+                await context.Channel.SendMessageAsync(result.ErrorReason);
             }
         }
 
-        private Task Log(LogMessage message)
+        private Task LogAsync(LogMessage message)
         {
             LogLevel logLevel;
             switch (message.Severity)
