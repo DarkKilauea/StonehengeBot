@@ -4,26 +4,44 @@ using System.Threading.Tasks;
 using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
+using JetBrains.Annotations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace StonehengeBot
 {
+    /// <summary>
+    /// Hosts the basic functionality for the bot
+    /// </summary>
+    [UsedImplicitly]
     public class Bot
     {
         private readonly IConfigurationRoot _configuration;
         private readonly ILogger<Bot> _logger;
         private readonly DiscordSocketClient _client;
         private readonly CommandService _commandService;
+        private readonly IServiceProvider _serviceProvider;
 
-        public Bot(IConfigurationRoot configuration, ILogger<Bot> logger, DiscordSocketClient client, CommandService commandService)
+        /// <summary>
+        /// Construct the host for the bot
+        /// </summary>
+        /// <param name="configuration">Configuration for the bot</param>
+        /// <param name="logger">Logger to use for outputting diagnostic messages</param>
+        /// <param name="client">Discord client which will be used for communication to discord's servers</param>
+        /// <param name="commandService">Command service for hosting command modules</param>
+        /// <param name="serviceProvider">Service provider containing all the services needed by command modules</param>
+        public Bot(IConfigurationRoot configuration, ILogger<Bot> logger, DiscordSocketClient client, CommandService commandService, IServiceProvider serviceProvider)
         {
             _configuration = configuration;
             _logger = logger;
             _client = client;
             _commandService = commandService;
+            _serviceProvider = serviceProvider;
         }
 
+        /// <summary>
+        /// Run the bot, blocking until the program is exited
+        /// </summary>
         public async Task Run()
         {
             _client.Log += LogAsync;
@@ -53,11 +71,10 @@ namespace StonehengeBot
                 return;
 
             var context = new SocketCommandContext(_client, userMessage);
-            var result = await _commandService.ExecuteAsync(context, argPosition);
+            var result = await _commandService.ExecuteAsync(context, argPosition, _serviceProvider);
             if (!result.IsSuccess)
             {
-                _logger.LogError(result.ErrorReason);
-                await context.Channel.SendMessageAsync(result.ErrorReason);
+                _logger.LogError("{ErrorReason}: {Message} in {Channel} by {Author}", result.ErrorReason, userMessage.Content, userMessage.Channel, userMessage.Author);
             }
         }
 
