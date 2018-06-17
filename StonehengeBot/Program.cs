@@ -1,8 +1,8 @@
-﻿using System.IO;
-using Discord.Commands;
+﻿using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using StonehengeBot.Configuration;
 using StonehengeBot.Data;
@@ -15,31 +15,37 @@ namespace StonehengeBot
 
         private static void Main(string[] args)
         {
-            // Load configuration
-            var configuration = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json")
-                .AddEnvironmentVariables(EnvironmentPrefix)
-                .AddCommandLine(args)
-                .Build();
-
-            var serviceProvider = new ServiceCollection()
-                .AddSingleton(configuration)
-                .AddOptions()
-                .AddLogging(builder =>
+            var builder = new HostBuilder()
+                .ConfigureAppConfiguration(configurationBuilder =>
                 {
-                    builder.AddConfiguration(configuration);
-                    builder.AddConsole();
+                    configurationBuilder.AddJsonFile("appsettings.json");
+                    configurationBuilder.AddEnvironmentVariables(EnvironmentPrefix);
+                    configurationBuilder.AddCommandLine(args);
                 })
-                .Configure<PledgeOptions>(configuration.GetSection("Pledges"))
-                .AddSingleton<PledgesRepository>()
-                .AddSingleton<DiscordSocketClient>()
-                .AddSingleton<CommandService>()
-                .AddSingleton<Bot>()
-                .BuildServiceProvider(true);
+                .ConfigureServices((context, collection) =>
+                {
+                    collection.AddOptions();
+                    collection.Configure<PledgeOptions>(context.Configuration.GetSection("Pledges"));
 
-            var bot = serviceProvider.GetRequiredService<Bot>();
-            bot.Run().GetAwaiter().GetResult();
+                    collection.AddSingleton<PledgesRepository>();
+                    collection.AddSingleton<DiscordSocketClient>();
+                    collection.AddSingleton<CommandService>();
+                    collection.AddSingleton<IHostedService, BotService>(provider => new BotService(
+                            provider.GetRequiredService<DiscordSocketClient>(),
+                            provider.GetRequiredService<CommandService>(),
+                            provider.GetRequiredService<ILogger<BotService>>(),
+                            provider,
+                            context.Configuration["Token"]
+                        )
+                    );
+                })
+                .ConfigureLogging((context, loggingBuilder) =>
+                {
+                    loggingBuilder.AddConfiguration(context.Configuration.GetSection("Logging"));
+                    loggingBuilder.AddConsole();
+                });
+
+            builder.RunConsoleAsync().GetAwaiter().GetResult();
         }
     }
 }

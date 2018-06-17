@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "StonehengeBot": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "STONEHENGEBOT_TOKEN": "NDAwMTY4OTg2NzQ0MDYxOTY1.DTXt8g.tuC6uTi-L0L8AILqq1_a_sezOZA"
+      }
+    }
+  }
+}

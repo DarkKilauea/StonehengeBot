@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using JetBrains.Annotations;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace StonehengeBot
@@ -14,51 +15,48 @@ namespace StonehengeBot
     /// Hosts the basic functionality for the bot
     /// </summary>
     [UsedImplicitly]
-    public class Bot
+    public class BotService : IHostedService
     {
-        private readonly IConfigurationRoot _configuration;
-        private readonly ILogger<Bot> _logger;
+        private readonly ILogger<BotService> _logger;
         private readonly DiscordSocketClient _client;
         private readonly CommandService _commandService;
         private readonly IServiceProvider _serviceProvider;
+        private readonly string _token;
 
         /// <summary>
         /// Construct the host for the bot
         /// </summary>
-        /// <param name="configuration">Configuration for the bot</param>
         /// <param name="logger">Logger to use for outputting diagnostic messages</param>
         /// <param name="client">Discord client which will be used for communication to discord's servers</param>
         /// <param name="commandService">Command service for hosting command modules</param>
         /// <param name="serviceProvider">Service provider containing all the services needed by command modules</param>
-        public Bot(IConfigurationRoot configuration, ILogger<Bot> logger, DiscordSocketClient client, CommandService commandService, IServiceProvider serviceProvider)
+        /// <param name="token">Bot token for logging into the discord system</param>
+        public BotService(DiscordSocketClient client, CommandService commandService, ILogger<BotService> logger,  IServiceProvider serviceProvider, string token)
         {
-            _configuration = configuration;
             _logger = logger;
             _client = client;
             _commandService = commandService;
             _serviceProvider = serviceProvider;
+            _token = token;
         }
 
-        /// <summary>
-        /// Run the bot, blocking until the program is exited
-        /// </summary>
-        public async Task Run()
+        /// <inheritdoc />
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
             _client.Log += LogAsync;
-
-            await InstallCommandsAsync(_client);
-
-            await _client.LoginAsync(TokenType.Bot, _configuration["Token"]);
-            await _client.StartAsync();
-
-            await Task.Delay(-1);
-        }
-
-        private async Task InstallCommandsAsync(DiscordSocketClient client)
-        {
-            client.MessageReceived += MessageReceivedAsync;
+            _client.MessageReceived += MessageReceivedAsync;
 
             await _commandService.AddModulesAsync(Assembly.GetEntryAssembly());
+
+            await _client.LoginAsync(TokenType.Bot, _token);
+            await _client.StartAsync();
+        }
+
+        /// <inheritdoc />
+        public async Task StopAsync(CancellationToken cancellationToken)
+        {
+            await _client.LogoutAsync();
+            await _client.StopAsync();
         }
 
         private async Task MessageReceivedAsync(SocketMessage message)
